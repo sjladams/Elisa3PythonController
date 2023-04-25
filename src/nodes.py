@@ -10,6 +10,10 @@ import copy
 import pickle
 import math
 import typing
+import copy
+import pickle
+
+import pandas as pd
 
 from configuration import *
 from Kalman import *
@@ -23,6 +27,11 @@ from std_msgs.msg import Float64
 from geometry_msgs.msg import Pose2D
 from geometry_msgs.msg import Pose
 
+robot_N = 3
+offset = 5
+T = 780
+P = 3
+
 wheel_distance = 0.041
 t_delay = 0.5
 std_vlt_trans = 20
@@ -35,6 +44,53 @@ MODE = "kalman"
 
 sr_KALMAN = 1
 mr_KALMAN = 0
+#
+# robot_history = dict.fromkeys(['0', '1', '2'], dict())
+#
+# key_set = ['orien', 'pos_x', 'pos_y', 'estimation_phi', 'estimation_x', 'estimation_y', 'cam_phi', 'cam_x', 'cam_y',
+#            'x', 'y', 'phi', 'OWA_w1', 'OWA_w2']
+#
+# with open('./data/saved_data_t0_RUN0.p', 'rb') as fp:  # 6
+#     if P == 3:
+#         b = pickle.load(fp)
+#     elif P == 2:
+#         b = pickle.load(fp, encoding='iso-8859-1')
+# # print(b)
+# for i in range(T):
+#     if (i == 0):
+#         for j in range(robot_N):
+#             robot_history[str(j)] = copy.deepcopy(b[i][str(j)])
+#             robot_history[str(j)][0] = dict.fromkeys(key_set, dict())
+#
+#             for k in range(len(key_set)):
+#                 robot_history[str(j)][0][key_set[k]] = copy.deepcopy(b[i][str(j)][key_set[k]])
+#                 del robot_history[str(j)][key_set[k]]
+#             # robot_history[str(j)][0]['pos_x'] = copy.deepcopy(b[i][str(j)]['pos_x'])
+#             # robot_history[str(j)][0]['pos_y'] = copy.deepcopy(b[i][str(j)]['pos_y'])
+#             # robot_history[str(j)][0]['orien'] = copy.deepcopy(b[i][str(j)]['orien'])
+#
+#             # del robot_history[str(j)]['pos_x']
+#             # del robot_history[str(j)]['pos_y']
+#             # del robot_history[str(j)]['orien']
+#
+#     else:
+#         for j in range(robot_N):
+#             robot_history[str(j)][i] = copy.deepcopy(b[i][str(j)])
+
+# print(b[0])
+# print(b[0][str(1)])
+
+# print(robot_history['0'])
+# print(robot_history['2'][1])
+
+#t = np.arange(T) * 0.05
+
+# a = pd.DataFrame(robot_history['2']).T
+# print('2')
+# print(a)
+# a = pd.DataFrame(robot_history['0']).T
+# b = pd.DataFrame(robot_history['1']).T
+# c = pd.DataFrame(robot_history['2']).T
 
 with open('mapper.json') as json_file:
     mapper = json.load(json_file)
@@ -130,7 +186,7 @@ class Node:
         self.kalman_cam = Kalman()
 
         # buffer
-        self.buffer_size = 5
+        self.buffer_size = 10
         # self.camera_buffer = [[] for i in range(3)]
 
         self.odo_error_buffer = [0.1] * self.buffer_size
@@ -335,10 +391,27 @@ class Node:
         MIN_dist = 1e5
         cameras.update_camera()
 
+        # listen the topic
+        idx = int(self.tag)
+        self.cam_x = copy.deepcopy(cameras.measurement_list[idx][0])
+        self.cam_y = copy.deepcopy(cameras.measurement_list[idx][1])
+        self.cam_phi = copy.deepcopy(cameras.measurement_list[idx][2])
+        self.cam_timer = copy.deepcopy(cameras.measurement_list[idx][3])
+
+        dist = math.sqrt((self.estimation[0] - self.cam_x) ** 2 + (self.estimation[1] - self.cam_y) ** 2)
+
+        # whether it's too far?
+        if (dist < 1.5):
+            return [self.cam_x, self.cam_y, self.odom_phi]
+
+        # the current dist is too far
         print("est: ", [self.estimation[0], self.estimation[1]])
-        i = 0;
+        i = 0
         idx = 0
         for item in cameras.measurement_list:
+            if (i == int(self.tag)):
+                continue
+
             dist = math.sqrt((self.estimation[0] - item[0]) ** 2 + (self.estimation[1] - item[1]) ** 2)
 
             # print('\n')
@@ -357,33 +430,35 @@ class Node:
         self.cam_phi = copy.deepcopy(cameras.measurement_list[idx][2])
         self.cam_timer = copy.deepcopy(cameras.measurement_list[idx][3])
 
-        if (self.t == 1):
-            self.MIN_dist_prev = MIN_dist
-            return [self.cam_x, self.cam_y, self.odom_phi]
+        # if(self.t == 1):
+        #     self.MIN_dist_prev = MIN_dist
+        #     return [self.cam_x, self.cam_y, self.odom_phi]
 
         # print('\n')
-        print("camera: ", [self.cam_x, self.cam_y, self.odom_phi])
+        # print("camera: ", [self.cam_x, self.cam_y, self.odom_phi])
         # print('\n')
 
-        error = abs(MIN_dist - self.MIN_dist_prev) / self.MIN_dist_prev
-        print("error", error)
-        self.MIN_dist_prev = MIN_dist
-        if (error > 1 and MIN_dist > 0.3):
-            return [self.odom_x, self.odom_y, self.odom_phi]
+        # error = abs(MIN_dist - self.MIN_dist_prev) / self.MIN_dist_prev
+        # print("error", error)
+        # self.MIN_dist_prev = MIN_dist
+
+        # angle = math.atan2((self.cam_y - self.estimation_prev[1]), (self.cam_x - self.estimation_prev[0]))
+
+        # angle1 = math.atan2((self.estimation[1] - self.estimation_prev[1]), (self.estimation[0] - self.estimation_prev[0]))
+
+        # delta_angle = abs(angle - angle1) / PI * 180
+
+        # print(delta_angle)
+
+        # if(error > 1 and MIN_dist > 0.3):
+        if (MIN_dist > 0.6):
+            return [self.estimation[0], self.estimation[1], self.estimation[2]]
+            # return [self.cam_x, self.cam_y, self.odom_phi]
         else:
             # self.cam_x = cameras.measurement_list[idx][0]
             # self.cam_y = cameras.measurement_list[idx][1]
             # self.cam_phi = cameras.measurement_list[idx][2]
             return [self.cam_x, self.cam_y, self.odom_phi]
-
-        # if(MIN_dist < 1 and error < 0.9):
-        #     return [self.cam_x, self.cam_y, self.odom_phi]
-        # else:
-        #     theta = math.atan2((self.cam_y - self.estimation[1]), (self.cam_x - self.estimation[0]))
-        #     head = self.heading - theta
-        #     if(abs(head) < 0.5):
-        #         return [self.cam_x, self.cam_y, self.odom_phi]
-        #     return [self.odom_x, self.odom_y, self.odom_phi]
 
     def measurement_update(self, cameras):
 
@@ -477,8 +552,8 @@ class Node:
             w1 = sum_camera / (sum_camera + sum_odo + offs)
             w2 = (sum_odo + offs) / (sum_camera + sum_odo + offs)
 
-            # w2 = 0.99
-            # w1 = 0.01
+            w2 = 0.99
+            w1 = 0.01
 
             # if(sum_camera > 30 * self.buffer_size):
             #     w1 = 0.9
@@ -502,6 +577,7 @@ class Node:
         # 2. estimated the position
         self.measurement_fusion_OWA(odom_measurement, cam_measurement)
         # self.estimation = [self.cam_x, self.cam_y, self.cam_phi]
+        #self.estimation = cam_measurement
 
         # 3. decide where to go based on self.estimation
         # could add a logic to let robor decide where to go
@@ -561,7 +637,7 @@ class Nodes:
         # self.ax = np.zeros((1, self.buffer))[0]
         # self.ay = np.zeros((1, self.buffer))[0]
 
-    def loop_fuc(self, move_type='move'):
+    def loop_fuc(self, t, move_type='move'):
         # self.cameras.update_camera()
         for tag in self.nodes:
             self.nodes[tag].loop_fuc(self.cameras, move_type)
@@ -573,7 +649,7 @@ class Nodes:
                                                         np.array([int(self.nodes[tag].address)]),
                                                         self.nodes[tag].msg_auto_motive), axis=0)
 
-        #self.msg_auto_motive.data = np.array([3, 3769, 1.730, 1.619, 0, 3795, 1.182, 2.412, 0, 3735, 2.484, 1.873, 0])
+        #self.msg_auto_motive.data = np.array([3, 3769, a['estimation_x'][t], a['estimation_y'][t], 0, 3795, b['estimation_x'][t], b['estimation_y'][t], 0, 3735, c['estimation_x'][t], c['estimation_y'][t], 0])
         #self.msg_auto_motive.data = np.array([3, 3769, 0.780, 0.730, 0, 3795, 0.580, 1.183, 0, 3735, self.xpos_range[self.k], self.ypos_range[self.k], 0])
 
         #self.k += 1
@@ -581,7 +657,7 @@ class Nodes:
         # SEND MOVE MESSAGE
         # rospy.sleep(1)
         self.publisher_auto_motive.publish(self.msg_auto_motive)
-        rospy.sleep(0.05)
+        rospy.sleep(0.01)
 
     def test_cam(self):
         self.cameras.update_camera()
@@ -695,8 +771,8 @@ class Nodes:
                                        'x': copy.deepcopy(self.nodes[tag].theoretical_position[0]),
                                        'y': copy.deepcopy(self.nodes[tag].theoretical_position[1]),
                                        'phi': copy.deepcopy(self.nodes[tag].theoretical_position[2]),
-                                       # 'P_k_odo': copy.deepcopy(self.nodes[tag].kalman_odo.P_k_1),
-                                       # 'P_k_cam': copy.deepcopy(self.nodes[tag].kalman_cam.P_k_1),
+                                       'P_k_odo': copy.deepcopy(self.nodes[tag].kalman_odo.P_k_1),
+                                       'P_k_cam': copy.deepcopy(self.nodes[tag].kalman_cam.P_k_1),
                                        'odom_timer': copy.deepcopy(self.nodes[tag].odom_timer),
                                        'cam_timer': copy.deepcopy(self.nodes[tag].cam_timer),
                                        'OWA_w1': copy.deepcopy(self.nodes[tag].OWA_w1),
@@ -709,7 +785,7 @@ class Nodes:
         # self.ay[-1] = self.nodes['0'].estimation[1]
 
     def save_data(self, t):
-        with open('./data/saved_data_t{}_RUN{}.p'.format(t, 1), 'wb') as fp:
+        with open('./data/saved_data_t{}_RUN{}.p'.format(t, 8), 'wb') as fp:
             pickle.dump(self.saved_data, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     # def plot_data(self, t):
@@ -719,6 +795,7 @@ class Nodes:
 
     #     plt.pause(0.1)
     #     plt.ioff()
+
 
 
 

@@ -39,21 +39,21 @@ if __name__ == "__main__":
     t_time_diff = time.time()
     t_time = 0
     #for t in range(last_saved_time, 100):
-    while(t_time < 50):
+    while(t_time < 100):
         t_time = time.time()-t_time_diff
 
         print("t: ", t)
         nodes.store_data(t_int)
 
-        nodes.loop_fuc('move')
+        nodes.loop_fuc(t_int, 'move')
         t = time.time()-t_last
         t_save = time.time() - t_last_save
 
-        if (t > 3):
+        if (t > 0.5):
             t_last = time.time()
             nodes.reset('theor')
 
-        if(t_save > 0.1):
+        if(t_save > 0.05):
             t_last_save = time.time()
             t_int +=1
             nodes.k +=1
@@ -69,5 +69,6 @@ if __name__ == "__main__":
     nodes.move('still', step_size= 0.0, theta=0.)
 
     print('done')
+
 
 
