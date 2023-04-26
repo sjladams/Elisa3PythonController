@@ -52,8 +52,8 @@ if __name__ == "__main__":
         publisher_tag.publish("run")
         robots.store_data(t)
         robots.loop_fuc('move')
-        if(t%1 == 0):
-            robots.reset('theor')
+        # if(t%3 == 0):
+        #     robots.reset('theor')
             
         # robots.move('still', step_size= 0.0, theta = 0.)       
         # robots.plot_data(t)

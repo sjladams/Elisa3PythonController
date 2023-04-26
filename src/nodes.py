@@ -128,6 +128,11 @@ class Node:
         self.odom_phi = self.phi
         self.odom_timer = 0.0
         
+        self.accelx = 0.0
+        self.accely = 0.0
+        self.accelxPos = 0.0
+        self.accelyPos = 0.0
+        
         self.cam_x = self.x
         self.cam_y = self.y
         self.cam_phi = self.phi
@@ -164,7 +169,7 @@ class Node:
         self.listener_robot_pose = rospy.Subscriber('elisa3_robot_{}/odom'.format(self.tag), Odometry,
                                                     self.listen_robot_pose_callback)
         
-        # self.listener_camera = rospy.Subscriber('Bebop{}/ground_pose'.format(int(self.tag) + 1), Pose2D, self.listen_optitrack_callback)
+        self.listener_accel = rospy.Subscriber('swarm/elisa3_robot_{}/odom'.format(self.tag), Odometry, self.listen_accel_callback)
 
         # Initialize shared update message attributes
         self.update_leds = False
@@ -202,6 +207,11 @@ class Node:
         self.odom_y = float(odomMsg.pose.pose.position.y)
         self.odom_phi = float(odomMsg.pose.pose.position.z)
     
+    def listen_accel_callback(self, accelMsg):
+        self.accelx = accelMsg.linear_acceleration.x
+        self.accely = accelMsg.linear_acceleration.y
+        self.accelxPos = accelMsg.angular_velocity.x
+        self.accelyPos = accelMsg.angular_velocity.y
 
     def print_position_measures(self):
         msg = """ 
@@ -325,7 +335,7 @@ class Node:
         dist = math.sqrt((self.estimation[0] - self.cam_x)**2 + (self.estimation[1] - self.cam_y)**2)
         
         # whether it's too far?
-        if(dist < 1.5):
+        if(dist < 0.25):
             return [self.cam_x, self.cam_y, self.odom_phi]
         
         # the current dist is too far
@@ -334,6 +344,7 @@ class Node:
         idx = 0
         for item in cameras.measurement_list:
             if(i == int(self.tag)):
+                i += 1
                 continue
             
             dist = math.sqrt((self.estimation[0] - item[0])**2 + (self.estimation[1] - item[1])**2)
@@ -357,30 +368,11 @@ class Node:
         self.cam_timer = copy.deepcopy(cameras.measurement_list[idx][3])
         
         
-        # if(self.t == 1):
-        #     self.MIN_dist_prev = MIN_dist
-        #     return [self.cam_x, self.cam_y, self.odom_phi]
-        
-        # print('\n')
-        # print("camera: ", [self.cam_x, self.cam_y, self.odom_phi])
-        # print('\n')
-        
-        # error = abs(MIN_dist - self.MIN_dist_prev) / self.MIN_dist_prev
-        # print("error", error)
-        # self.MIN_dist_prev = MIN_dist
-        
-        # angle = math.atan2((self.cam_y - self.estimation_prev[1]), (self.cam_x - self.estimation_prev[0]))
-        
-        # angle1 = math.atan2((self.estimation[1] - self.estimation_prev[1]), (self.estimation[0] - self.estimation_prev[0]))
-        
-        # delta_angle = abs(angle - angle1) / PI * 180
-        
-        # print(delta_angle)
-        
         # if(error > 1 and MIN_dist > 0.3):
         if(MIN_dist > 0.6):
-            return [self.estimation[0], self.estimation[1], self.estimation[2]]
+            # return [self.estimation[0], self.estimation[1], self.estimation[2]]
             # return [self.cam_x, self.cam_y, self.odom_phi]
+            return [self.odom_x, self.odom_y, self.odom_phi]
         else:
             # self.cam_x = cameras.measurement_list[idx][0]
             # self.cam_y = cameras.measurement_list[idx][1]
@@ -393,6 +385,8 @@ class Node:
         # take the measurement from the odom
         odom_measurement = [self.odom_x, self.odom_y, self.odom_phi]        
         
+        accel_measurement = [self.accelx, self.accely, self.odom_phi]
+        
         # take the measurement from the odom
         cam_measurement = self.determine_camera(cameras)
         # [self.cam_x, self.cam_y, self.cam_phi] = cam_measurement
@@ -403,7 +397,7 @@ class Node:
         
         self.print_position_measures()
         
-        return [odom_measurement, cam_measurement]
+        return [odom_measurement, cam_measurement, accel_measurement]
             
     def measurement_fusion(self, odom_measurement, cam_measurement):
         if (MODE == "cam"):
@@ -415,14 +409,14 @@ class Node:
                                      [  0,    0, 1.0]]) 
         self.kalman_odo.Q_k = np.array([[0.01,   0,    0],
                                      [  0, 0.01,    0],
-                                     [  0,    0, 0.005]]) 
+                                     [  0,    0, 0.01]]) 
         optimal_state_estimate_k, covariance_estimate_k = self.kalman_odo.sr_EKF(odom_measurement, self.estimation, 1)
           
         self.measurement_Kalman = optimal_state_estimate_k
         self.kalman_odo.P_k_1 = covariance_estimate_k
         self.estimation = self.measurement_Kalman
         
-        if (self.t % 5 == 0):
+        if (self.t % 1 == 0):
             if(sr_KALMAN and ~mr_KALMAN):
                 optimal_state_estimate_k, covariance_estimate_k = self.kalman_cam.sr_EKF(cam_measurement, self.estimation, 1)
             elif(mr_KALMAN and ~sr_KALMAN):
@@ -505,7 +499,7 @@ class Node:
         self.t += 1
         
         # 1. take measurement from odom and cam odom_measurement and cam_measurement via sub
-        [odom_measurement, cam_measurement] = self.measurement_update(cameras)
+        [odom_measurement, cam_measurement, accel_measurement] = self.measurement_update(cameras)
         
         # 2. estimated the position
         self.estimation = self.states_transform(self.estimation, self.input_v, self.input_omega)
@@ -714,7 +708,9 @@ class Nodes:
                                        'odom_timer': copy.deepcopy(self.nodes[tag].odom_timer),
                                        'cam_timer': copy.deepcopy(self.nodes[tag].cam_timer),
                                        'OWA_w1': copy.deepcopy(self.nodes[tag].OWA_w1),
-                                       'OWA_w2': copy.deepcopy(self.nodes[tag].OWA_w2)
+                                       'OWA_w2': copy.deepcopy(self.nodes[tag].OWA_w2),
+                                       'accelxPos': copy.deepcopy(self.nodes[tag].accelxPos),
+                                       'accelyPos': copy.deepcopy(self.nodes[tag].accelyPos)
                                        }
         # self.ax[ :-1] = self.ax[ 1:]
         # self.ay[ :-1] = self.ay[ 1:]
