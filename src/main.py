@@ -69,6 +69,3 @@ if __name__ == "__main__":
     nodes.move('still', step_size= 0.0, theta=0.)
 
     print('done')
-
-
-

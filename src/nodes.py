@@ -143,7 +143,7 @@ class Node:
     def __init__(self, release_time, range=range, tag=0):
 
         self.t = 0
-
+        self.Threshold = 0.02
         self.tag = tag
         self.release_time = release_time
         self.address = mapper[str(tag)]['address']
@@ -219,7 +219,7 @@ class Node:
         self.update_leds = False
         self.msg_leds = np.array([0, 0, 0])
         self.update_auto_motive = False
-        self.msg_auto_motive = np.array([0, 0, 0, 0])
+        self.msg_auto_motive = np.array([0, 0, 0])
         self.update_reset = False
         self.msg_reset = np.array([0, 0, 0, 0])
         self.trigger_auto_motive = 103
@@ -401,64 +401,67 @@ class Node:
         dist = math.sqrt((self.estimation[0] - self.cam_x) ** 2 + (self.estimation[1] - self.cam_y) ** 2)
 
         # whether it's too far?
-        if (dist < 1.5):
+        if (dist < 0.05):
             return [self.cam_x, self.cam_y, self.odom_phi]
+        else :
+            # the current dist is too far
+            print("est: ", [self.estimation[0], self.estimation[1]])
+            i = 0
+            idx = 0
+            for item in cameras.measurement_list:
+                if (i == int(self.tag)):
+                    i += 1
+                    continue
 
-        # the current dist is too far
-        print("est: ", [self.estimation[0], self.estimation[1]])
-        i = 0
-        idx = 0
-        for item in cameras.measurement_list:
-            if (i == int(self.tag)):
-                continue
+                dist = math.sqrt((self.estimation[0] - item[0]) ** 2 + (self.estimation[1] - item[1]) ** 2)
 
-            dist = math.sqrt((self.estimation[0] - item[0]) ** 2 + (self.estimation[1] - item[1]) ** 2)
+                # print('\n')
+                print("cam: ", [item[0], item[1]])
+                # print('\n')
+                print("dist", dist)
+                # print("MIN_dist", MIN_dist)
+
+                if (dist < MIN_dist):
+                    MIN_dist = dist
+                    idx = i
+                i += 1
+
+            self.cam_x = copy.deepcopy(cameras.measurement_list[idx][0])
+            self.cam_y = copy.deepcopy(cameras.measurement_list[idx][1])
+            self.cam_phi = copy.deepcopy(cameras.measurement_list[idx][2])
+            self.cam_timer = copy.deepcopy(cameras.measurement_list[idx][3])
+
+            # if(self.t == 1):
+            #     self.MIN_dist_prev = MIN_dist
+            #     return [self.cam_x, self.cam_y, self.odom_phi]
 
             # print('\n')
-            print("cam: ", [item[0], item[1]])
+            # print("camera: ", [self.cam_x, self.cam_y, self.odom_phi])
             # print('\n')
-            print("dist", dist)
-            # print("MIN_dist", MIN_dist)
 
-            if (dist < MIN_dist):
-                MIN_dist = dist
-                idx = i
-            i += 1
+            # error = abs(MIN_dist - self.MIN_dist_prev) / self.MIN_dist_prev
+            # print("error", error)
+            # self.MIN_dist_prev = MIN_dist
 
-        self.cam_x = copy.deepcopy(cameras.measurement_list[idx][0])
-        self.cam_y = copy.deepcopy(cameras.measurement_list[idx][1])
-        self.cam_phi = copy.deepcopy(cameras.measurement_list[idx][2])
-        self.cam_timer = copy.deepcopy(cameras.measurement_list[idx][3])
+            # angle = math.atan2((self.cam_y - self.estimation_prev[1]), (self.cam_x - self.estimation_prev[0]))
 
-        # if(self.t == 1):
-        #     self.MIN_dist_prev = MIN_dist
-        #     return [self.cam_x, self.cam_y, self.odom_phi]
+            # angle1 = math.atan2((self.estimation[1] - self.estimation_prev[1]), (self.estimation[0] - self.estimation_prev[0]))
 
-        # print('\n')
-        # print("camera: ", [self.cam_x, self.cam_y, self.odom_phi])
-        # print('\n')
+            # delta_angle = abs(angle - angle1) / PI * 180
 
-        # error = abs(MIN_dist - self.MIN_dist_prev) / self.MIN_dist_prev
-        # print("error", error)
-        # self.MIN_dist_prev = MIN_dist
+            # print(delta_angle)
 
-        # angle = math.atan2((self.cam_y - self.estimation_prev[1]), (self.cam_x - self.estimation_prev[0]))
-
-        # angle1 = math.atan2((self.estimation[1] - self.estimation_prev[1]), (self.estimation[0] - self.estimation_prev[0]))
-
-        # delta_angle = abs(angle - angle1) / PI * 180
-
-        # print(delta_angle)
-
-        # if(error > 1 and MIN_dist > 0.3):
-        if (MIN_dist > 0.6):
-            return [self.estimation[0], self.estimation[1], self.estimation[2]]
-            # return [self.cam_x, self.cam_y, self.odom_phi]
-        else:
-            # self.cam_x = cameras.measurement_list[idx][0]
-            # self.cam_y = cameras.measurement_list[idx][1]
-            # self.cam_phi = cameras.measurement_list[idx][2]
-            return [self.cam_x, self.cam_y, self.odom_phi]
+            # if(error > 1 and MIN_dist > 0.3):
+            if (MIN_dist > 0.02):
+                self.Threshold += 0.001
+                return [self.odom_x, self.odom_y, self.odom_phi]
+                # return [self.cam_x, self.cam_y, self.odom_phi]
+            else:
+                self.Threshold = 0.02
+                # self.cam_x = cameras.measurement_list[idx][0]
+                # self.cam_y = cameras.measurement_list[idx][1]
+                # self.cam_phi = cameras.measurement_list[idx][2]
+                return [self.cam_x, self.cam_y, self.odom_phi]
 
     def measurement_update(self, cameras):
 
@@ -548,12 +551,12 @@ class Node:
             sum_camera = sum(self.camera_error_buffer)
             sum_odo = sum(self.odo_error_buffer)
 
-            offs = 0.1
+            offs = 0.0
             w1 = sum_camera / (sum_camera + sum_odo + offs)
             w2 = (sum_odo + offs) / (sum_camera + sum_odo + offs)
 
-            w2 = 0.99
-            w1 = 0.01
+            # w2 = 0.99
+            # w1 = 0.01
 
             # if(sum_camera > 30 * self.buffer_size):
             #     w1 = 0.9
@@ -785,7 +788,7 @@ class Nodes:
         # self.ay[-1] = self.nodes['0'].estimation[1]
 
     def save_data(self, t):
-        with open('./data/saved_data_t{}_RUN{}.p'.format(t, 8), 'wb') as fp:
+        with open('./data/saved_data_t{}_RUN{}.p'.format(t, 23), 'wb') as fp:
             pickle.dump(self.saved_data, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
     # def plot_data(self, t):
@@ -795,8 +798,3 @@ class Nodes:
 
     #     plt.pause(0.1)
     #     plt.ioff()
-
-
-
-
-
